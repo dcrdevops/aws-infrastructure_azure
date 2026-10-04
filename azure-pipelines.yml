@@ -79,3 +79,14 @@ steps:
     inlineScript: |
       cd terraform
       terraform plan
+
+# 6. Terraform Apply
+- task: AWSShellScript@1
+  displayName: 'Terraform Apply'
+  inputs:
+    awsCredentials: 'AWS-Terraform-POC'
+    regionName: '$(AWS_REGION)'
+    scriptType: 'inline'
+    inlineScript: |
+      cd terraform
+      terraform apply -auto-approve
