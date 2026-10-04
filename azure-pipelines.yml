@@ -28,7 +28,10 @@ steps:
 
     unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
-    sudo mv terraform /usr/local/bin/terraform
+    mkdir -p $(Agent.TempDirectory)/terraform-bin
+    mv terraform $(Agent.TempDirectory)/terraform-bin/
+
+    echo "##vso[task.prependpath]$(Agent.TempDirectory)/terraform-bin"
 
     terraform version
   displayName: 'Install Terraform'
