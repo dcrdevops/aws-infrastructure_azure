@@ -96,3 +96,88 @@ stages:
       inputs:
         targetPath: '$(TF_DIR)/tfplan'
         artifact: 'terraform-plan'
+
+# ============================================================
+# STAGE 2 — APPLY
+# ============================================================
+
+- stage: TerraformApply
+  displayName: 'Terraform Apply'
+
+  dependsOn: TerraformPlan
+  condition: succeeded()
+
+  jobs:
+
+  - deployment: Apply
+    displayName: 'Apply Approved Terraform Plan'
+
+    environment: 'terraform-plan-production'
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          # Checkout repository
+          - checkout: self
+            displayName: 'Checkout Repository'
+
+
+          # Install Terraform
+          - bash: |
+              set -e
+
+              TERRAFORM_VERSION="1.13.3"
+              INSTALL_DIR="$(Agent.TempDirectory)/terraform-install"
+
+              mkdir -p "$INSTALL_DIR"
+              cd "$INSTALL_DIR"
+
+              wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+              unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+              chmod +x terraform
+
+              export PATH="$INSTALL_DIR:$PATH"
+              echo "##vso[task.prependpath]$INSTALL_DIR"
+
+              terraform version
+
+            displayName: 'Install Terraform'
+
+
+          # Download the exact plan artifact
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download Terraform Plan'
+            inputs:
+              artifact: 'terraform-plan'
+              path: '$(Pipeline.Workspace)/terraform-plan'
+
+
+          # Terraform Init
+          - task: AWSShellScript@1
+            displayName: 'Terraform Init'
+            inputs:
+              awsCredentials: 'AWS-Terraform-POC'
+              regionName: '$(AWS_REGION)'
+              scriptType: 'inline'
+              inlineScript: |
+                cd $(TF_DIR)
+                terraform init
+
+
+          # Apply the exact approved plan
+          - task: AWSShellScript@1
+            displayName: 'Terraform Apply Approved Plan'
+            inputs:
+              awsCredentials: 'AWS-Terraform-POC'
+              regionName: '$(AWS_REGION)'
+              scriptType: 'inline'
+              inlineScript: |
+                cd $(TF_DIR)
+
+                cp "$(Pipeline.Workspace)/terraform-plan/tfplan" .
+
+                terraform apply tfplan
