@@ -1,5 +1,5 @@
-trigger:
-- main
+
+trigger: none
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -7,86 +7,175 @@ pool:
 variables:
   AWS_REGION: 'us-east-1'
 
-steps:
+stages:
 
-# 1. Verify AWS connectivity
-- task: AWSCLI@1
-  displayName: 'Verify AWS Connection'
-  inputs:
-    awsCredentials: 'AWS-Terraform-POC'
-    regionName: '$(AWS_REGION)'
-    awsCommand: 'sts'
-    awsSubCommand: 'get-caller-identity'
-
-#2. intall terraform
-- bash: |
-    set -e
-
-    TERRAFORM_VERSION="1.13.3"
-    INSTALL_DIR="$(Agent.TempDirectory)/terraform-install"
-
-    mkdir -p "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
-
-    wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-
-    unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-
-    chmod +x terraform
-
-    # Make Terraform available in this script
-    export PATH="$INSTALL_DIR:$PATH"
-
-    # Make Terraform available to subsequent pipeline tasks
-    echo "##vso[task.prependpath]$INSTALL_DIR"
-
-    echo "Terraform installed at:"
-    which terraform
-
-    echo "Terraform version:"
-    terraform version
-  displayName: 'Install Terraform'
-
-# 3. Terraform Init
-- task: AWSShellScript@1
-  displayName: 'Terraform Init'
-  inputs:
-    awsCredentials: 'AWS-Terraform-POC'
-    regionName: '$(AWS_REGION)'
-    scriptType: 'inline'
-    inlineScript: |
-      cd terraform
-      terraform init
-
-# 4. Terraform Validate
-- task: AWSShellScript@1
-  displayName: 'Terraform Validate'
-  inputs:
-    awsCredentials: 'AWS-Terraform-POC'
-    regionName: '$(AWS_REGION)'
-    scriptType: 'inline'
-    inlineScript: |
-      cd terraform
-      terraform validate
-
-# 5. Terraform Plan
-- task: AWSShellScript@1
+# ==========================================
+# STAGE 1 - TERRAFORM PLAN
+# ==========================================
+- stage: TerraformPlan
   displayName: 'Terraform Plan'
-  inputs:
-    awsCredentials: 'AWS-Terraform-POC'
-    regionName: '$(AWS_REGION)'
-    scriptType: 'inline'
-    inlineScript: |
-      cd terraform
-      terraform plan
 
-# 6. Terraform Apply
-- task: AWSShellScript@1
+  jobs:
+  - job: Plan
+    displayName: 'Terraform Init Validate Plan'
+
+    steps:
+
+    # --------------------------------------
+    # Verify AWS Connection
+    # --------------------------------------
+    - task: AWSCLI@1
+      displayName: 'Verify AWS Connection'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        awsCommand: 'sts'
+        awsSubCommand: 'get-caller-identity'
+
+    # --------------------------------------
+    # Install Terraform
+    # --------------------------------------
+    - bash: |
+        set -e
+
+        TERRAFORM_VERSION="1.13.3"
+        INSTALL_DIR="$(Agent.TempDirectory)/terraform-install"
+
+        mkdir -p "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+
+        wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+        unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+        chmod +x terraform
+
+        export PATH="$INSTALL_DIR:$PATH"
+        echo "##vso[task.prependpath]$INSTALL_DIR"
+
+        echo "Terraform location:"
+        which terraform
+
+        echo "Terraform version:"
+        terraform version
+
+      displayName: 'Install Terraform'
+
+    # --------------------------------------
+    # Terraform Init
+    # --------------------------------------
+    - task: AWSShellScript@1
+      displayName: 'Terraform Init'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        scriptType: 'inline'
+        inlineScript: |
+          cd terraform
+          terraform init
+
+    # --------------------------------------
+    # Terraform Validate
+    # --------------------------------------
+    - task: AWSShellScript@1
+      displayName: 'Terraform Validate'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        scriptType: 'inline'
+        inlineScript: |
+          cd terraform
+          terraform validate
+
+    # --------------------------------------
+    # Terraform Plan
+    # --------------------------------------
+    - task: AWSShellScript@1
+      displayName: 'Terraform Plan'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        scriptType: 'inline'
+        inlineScript: |
+          cd terraform
+          terraform plan
+
+
+# ==========================================
+# STAGE 2 - TERRAFORM APPLY
+# ==========================================
+- stage: TerraformApply
   displayName: 'Terraform Apply'
-  inputs:
-    awsCredentials: 'AWS-Terraform-POC'
-    regionName: '$(AWS_REGION)'
-    scriptType: 'inline'
-    inlineScript: |
-      cd terraform
-      terraform apply -auto-approve
+
+  dependsOn: TerraformPlan
+
+  condition: succeeded()
+
+  jobs:
+
+  - deployment: Apply
+    displayName: 'Apply Terraform Changes'
+
+    # Azure DevOps Environment
+    # Approval is configured on this Environment
+    environment: 'terraform-production'
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          # --------------------------------------
+          # Install Terraform
+          # --------------------------------------
+          - bash: |
+              set -e
+
+              TERRAFORM_VERSION="1.13.3"
+              INSTALL_DIR="$(Agent.TempDirectory)/terraform-install"
+
+              mkdir -p "$INSTALL_DIR"
+              cd "$INSTALL_DIR"
+
+              wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+              unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+              chmod +x terraform
+
+              export PATH="$INSTALL_DIR:$PATH"
+              echo "##vso[task.prependpath]$INSTALL_DIR"
+
+              echo "Terraform location:"
+              which terraform
+
+              echo "Terraform version:"
+              terraform version
+
+            displayName: 'Install Terraform'
+
+          # --------------------------------------
+          # Terraform Init
+          # --------------------------------------
+          - task: AWSShellScript@1
+            displayName: 'Terraform Init'
+            inputs:
+              awsCredentials: 'AWS-Terraform-POC'
+              regionName: '$(AWS_REGION)'
+              scriptType: 'inline'
+              inlineScript: |
+                cd terraform
+                terraform init
+
+          # --------------------------------------
+          # Terraform Apply
+          # --------------------------------------
+          - task: AWSShellScript@1
+            displayName: 'Terraform Apply'
+            inputs:
+              awsCredentials: 'AWS-Terraform-POC'
+              regionName: '$(AWS_REGION)'
+              scriptType: 'inline'
+              inlineScript: |
+                cd terraform
+                terraform apply -auto-approve
