@@ -126,6 +126,13 @@ stages:
           steps:
 
           # --------------------------------------
+          # Checkout Repository
+          # --------------------------------------
+          - checkout: self
+            displayName: 'Checkout Repository'
+
+
+          # --------------------------------------
           # Install Terraform
           # --------------------------------------
           - bash: |
