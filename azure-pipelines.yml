@@ -1,1 +1,67 @@
+trigger:
+- main
 
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  AWS_REGION: 'us-east-1'
+
+steps:
+
+# 1. Verify AWS connectivity
+- task: AWSCLI@1
+  displayName: 'Verify AWS Connection'
+  inputs:
+    awsCredentials: 'AWS-Terraform-POC'
+    regionName: '$(AWS_REGION)'
+    awsCommand: 'sts'
+    awsSubCommand: 'get-caller-identity'
+
+# 2. Install Terraform
+- bash: |
+    set -e
+
+    TERRAFORM_VERSION="1.13.3"
+
+    wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+    unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+    sudo mv terraform /usr/local/bin/terraform
+
+    terraform version
+  displayName: 'Install Terraform'
+
+# 3. Terraform Init
+- task: AWSShellScript@1
+  displayName: 'Terraform Init'
+  inputs:
+    awsCredentials: 'AWS-Terraform-POC'
+    regionName: '$(AWS_REGION)'
+    scriptType: 'inline'
+    inlineScript: |
+      cd terraform
+      terraform init
+
+# 4. Terraform Validate
+- task: AWSShellScript@1
+  displayName: 'Terraform Validate'
+  inputs:
+    awsCredentials: 'AWS-Terraform-POC'
+    regionName: '$(AWS_REGION)'
+    scriptType: 'inline'
+    inlineScript: |
+      cd terraform
+      terraform validate
+
+# 5. Terraform Plan
+- task: AWSShellScript@1
+  displayName: 'Terraform Plan'
+  inputs:
+    awsCredentials: 'AWS-Terraform-POC'
+    regionName: '$(AWS_REGION)'
+    scriptType: 'inline'
+    inlineScript: |
+      cd terraform
+      terraform plan
