@@ -1,0 +1,98 @@
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  AWS_REGION: 'us-east-1'
+  TF_DIR: 'terraform-plan-artifact'
+
+stages:
+
+# ============================================================
+# STAGE 1 — PLAN
+# ============================================================
+
+- stage: TerraformPlan
+  displayName: 'Terraform Plan'
+
+  jobs:
+  - job: Plan
+    displayName: 'Terraform Init Validate Plan'
+
+    steps:
+
+    - checkout: self
+      displayName: 'Checkout Repository'
+
+    # Verify AWS credentials
+    - task: AWSCLI@1
+      displayName: 'Verify AWS Connection'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        awsCommand: 'sts'
+        awsSubCommand: 'get-caller-identity'
+
+    # Install Terraform
+    - bash: |
+        set -e
+
+        TERRAFORM_VERSION="1.13.3"
+        INSTALL_DIR="$(Agent.TempDirectory)/terraform-install"
+
+        mkdir -p "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+
+        wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+        unzip -o terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+        chmod +x terraform
+
+        export PATH="$INSTALL_DIR:$PATH"
+        echo "##vso[task.prependpath]$INSTALL_DIR"
+
+        terraform version
+
+      displayName: 'Install Terraform'
+
+    # Terraform Init
+    - task: AWSShellScript@1
+      displayName: 'Terraform Init'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        scriptType: 'inline'
+        inlineScript: |
+          cd $(TF_DIR)
+          terraform init
+
+    # Terraform Validate
+    - task: AWSShellScript@1
+      displayName: 'Terraform Validate'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        scriptType: 'inline'
+        inlineScript: |
+          cd $(TF_DIR)
+          terraform validate
+
+    # Terraform Plan
+    - task: AWSShellScript@1
+      displayName: 'Terraform Plan'
+      inputs:
+        awsCredentials: 'AWS-Terraform-POC'
+        regionName: '$(AWS_REGION)'
+        scriptType: 'inline'
+        inlineScript: |
+          cd $(TF_DIR)
+          terraform plan -out=tfplan
+
+    # Publish exact Terraform plan
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Terraform Plan'
+      inputs:
+        targetPath: '$(TF_DIR)/tfplan'
+        artifact: 'terraform-plan'
