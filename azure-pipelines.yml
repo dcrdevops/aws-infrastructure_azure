@@ -18,15 +18,15 @@ steps:
     awsCommand: 'sts'
     awsSubCommand: 'get-caller-identity'
 
-# 2. Install Terraform
+#2. intall terraform
 - bash: |
     set -e
 
     TERRAFORM_VERSION="1.13.3"
+    INSTALL_DIR="$(Agent.TempDirectory)/terraform-install"
 
-    mkdir -p "$(Agent.TempDirectory)/terraform-install"
-
-    cd "$(Agent.TempDirectory)/terraform-install"
+    mkdir -p "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
 
     wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
@@ -34,8 +34,16 @@ steps:
 
     chmod +x terraform
 
-    echo "##vso[task.prependpath]$(Agent.TempDirectory)/terraform-install"
+    # Make Terraform available in this script
+    export PATH="$INSTALL_DIR:$PATH"
 
+    # Make Terraform available to subsequent pipeline tasks
+    echo "##vso[task.prependpath]$INSTALL_DIR"
+
+    echo "Terraform installed at:"
+    which terraform
+
+    echo "Terraform version:"
     terraform version
   displayName: 'Install Terraform'
 
